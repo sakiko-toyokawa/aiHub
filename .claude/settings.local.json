@@ -12,7 +12,12 @@
       "Bash(grep -rE \"\\(114514|lpmortvwzvdgfhhg|2o9smYdLcp7Y7wPHhrpZ\\)\" --include=*.py --include=*.ts --include=*.tsx --include=*.js --include=*.json --include=*.md --include=*.txt .)",
       "Bash(grep -rE \"\\(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{30,}|mzk18890|114514|zhaodan|lpmort\\)\" --include=*.py --include=*.ts --include=*.tsx --include=*.js --include=*.json --include=*.md --include=*.txt .)",
       "Bash(find . -name .env* -o -name *.env)",
-      "Bash(grep -rE \"\\(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{30,}|z_c0=[^x]|SESSDATA=[^x]|twitter_auth_token=[^x]|twitter_ct0=[^x]\\)\" --include=*.py --include=*.ts --include=*.tsx --include=*.js --include=*.json --include=*.md --include=*.txt --include=*.bat --include=*.ps1 .)"
+      "Bash(grep -rE \"\\(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{30,}|z_c0=[^x]|SESSDATA=[^x]|twitter_auth_token=[^x]|twitter_ct0=[^x]\\)\" --include=*.py --include=*.ts --include=*.tsx --include=*.js --include=*.json --include=*.md --include=*.txt --include=*.bat --include=*.ps1 .)",
+      "Bash(curl -I -s --connect-timeout 5 https://github.com)",
+      "Bash(nslookup github.com)",
+      "Bash(echo \"HTTP_PROXY=$HTTP_PROXY\")",
+      "Bash(echo \"HTTPS_PROXY=$HTTPS_PROXY\")",
+      "Bash(echo \"ALL_PROXY=$ALL_PROXY\")"
     ]
   }
 }
