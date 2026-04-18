@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Heart, Bookmark, ExternalLink, Sparkles, ChevronDown, ChevronUp, Trash2, Loader2, Highlighter } from 'lucide-react'
+import { Heart, Bookmark, ExternalLink, Sparkles, ChevronDown, ChevronUp, Trash2, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import type { Summary } from '../types'
 
@@ -105,18 +105,6 @@ function SummaryCard({
           {summary.summary_text}
         </p>
 
-        {/* Highlight Sentence */}
-        {summary.highlight_sentence && (
-          <div className="mb-3 p-3 rounded-lg bg-x-yellow/5 border border-x-yellow/20">
-            <div className="flex items-start gap-2">
-              <Highlighter className="w-4 h-4 text-x-yellow mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-x-light-gray/90 italic leading-relaxed">
-                "{summary.highlight_sentence}"
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* Key Points */}
         {summary.key_points && summary.key_points.length > 0 && (
           <div className="mb-3 space-y-2">
@@ -147,22 +135,6 @@ function SummaryCard({
           </div>
         )}
 
-        {/* Read Progress */}
-        {summary.read_progress > 0 && summary.read_progress < 100 && (
-          <div className="mb-3 flex items-center gap-2">
-            <div className="flex-1 h-1.5 bg-x-border/30 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-x-cyan rounded-full transition-all duration-500"
-                style={{
-                  width: `${summary.read_progress}%`,
-                  boxShadow: '0 0 6px hsl(var(--x-cyan) / 0.5)',
-                }}
-              />
-            </div>
-            <span className="text-[10px] font-mono text-x-cyan">{summary.read_progress}%</span>
-          </div>
-        )}
-
         {/* Actions */}
         <div className="flex items-center justify-between pt-3 border-t border-x-border/40">
           <div className="flex items-center gap-5">
@@ -176,7 +148,7 @@ function SummaryCard({
               }`}
             >
               <Heart className={`w-4 h-4 ${summary.is_read ? 'fill-current' : ''}`} />
-              <span>{summary.is_read ? '已读' : summary.read_progress > 0 ? `${summary.read_progress}%` : '未读'}</span>
+              <span>{summary.is_read ? '已读' : '未读'}</span>
             </button>
 
             <button

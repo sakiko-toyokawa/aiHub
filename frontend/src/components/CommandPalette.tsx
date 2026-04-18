@@ -1,11 +1,9 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
-import { Search, Command, Loader2, X, CheckCircle2, AlertCircle, Zap, Database, BarChart3, Flame, Settings, Mail, Sparkles } from 'lucide-react'
+import { Search, Command, Loader2, X, CheckCircle2, AlertCircle, Zap, Database, BarChart3, Flame, Settings, Mail } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
 import { useCommandPalette } from './CommandPaletteProvider'
 import { useAgentExecutor } from '../hooks/useAgentExecutor'
 import { agentApi } from '../api/agent'
-import { summariesApi } from '../api/client'
 import type { QuickAction, AgentAction } from '../types/agent'
 import type { Summary } from '../types'
 
@@ -13,49 +11,7 @@ import type { Summary } from '../types'
  * CommandPalette - Cyber Terminal style
  */
 
-/** 高亮匹配文本 */
-function HighlightText({ text, query, className }: { text: string; query: string; className?: string }) {
-  if (!query || !text) return <span className={className}>{text}</span>
-  const lowerText = text.toLowerCase()
-  const lowerQuery = query.toLowerCase()
-  const parts: { text: string; match: boolean }[] = []
-  let lastIndex = 0
-  let idx = lowerText.indexOf(lowerQuery)
-  while (idx !== -1) {
-    if (idx > lastIndex) {
-      parts.push({ text: text.slice(lastIndex, idx), match: false })
-    }
-    parts.push({ text: text.slice(idx, idx + query.length), match: true })
-    lastIndex = idx + query.length
-    idx = lowerText.indexOf(lowerQuery, lastIndex)
-  }
-  if (lastIndex < text.length) {
-    parts.push({ text: text.slice(lastIndex), match: false })
-  }
-  if (parts.length === 0) parts.push({ text, match: false })
-  return (
-    <span className={className}>
-      {parts.map((part, i) =>
-        part.match ? (
-          <mark key={i} className="bg-x-blue/20 text-x-light-gray rounded px-0.5">
-            {part.text}
-          </mark>
-        ) : (
-          <span key={i}>{part.text}</span>
-        )
-      )}
-    </span>
-  )
-}
-
 const QUICK_ACTIONS: QuickAction[] = [
-  {
-    id: 'ask-ai',
-    label: 'Ask AI',
-    description: '向 AI 知识库提问，基于已有摘要内容作答',
-    icon: 'Sparkles',
-    action: { type: 'ask_ai', params: { question: '最近有什么有趣的 AI 动态？' } },
-  },
   {
     id: 'view-all',
     label: '查看全部摘要',
@@ -125,76 +81,16 @@ export function CommandPalette() {
   const { isOpen, input, isLoading, error, result, setInput, setLoading, setError, setResult, close } =
     useCommandPalette()
   const { execute } = useAgentExecutor()
-  const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
   const [pendingAction, setPendingAction] = useState<AgentAction | null>(null)
 
-  // Search mode states
-  const [searchResults, setSearchResults] = useState<Summary[]>([])
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [selectedIndex, setSelectedIndex] = useState(-1)
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // 打开时自动聚焦输入框并全选，重置搜索状态
+  // 打开时自动聚焦输入框并全选
   useEffect(() => {
     if (isOpen && inputRef.current) {
       inputRef.current.focus()
       inputRef.current.select()
-      setSearchResults([])
-      setSelectedIndex(-1)
     }
   }, [isOpen])
-
-  // Debounced search: when input is non-empty, search summaries
-  useEffect(() => {
-    const query = input.trim()
-    if (!query) {
-      setSearchResults([])
-      setSelectedIndex(-1)
-      return
-    }
-
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-    searchTimerRef.current = setTimeout(async () => {
-      setSearchLoading(true)
-      try {
-        const result = await summariesApi.list({ search: query, page_size: 10 })
-        setSearchResults(result.items)
-        setSelectedIndex(result.items.length > 0 ? 0 : -1)
-      } catch {
-        setSearchResults([])
-        setSelectedIndex(-1)
-      } finally {
-        setSearchLoading(false)
-      }
-    }, 300)
-
-    return () => {
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-    }
-  }, [input])
-
-  // Keyboard navigation for search results
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (searchResults.length === 0) return
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSelectedIndex((prev) => (prev + 1) % searchResults.length)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelectedIndex((prev) => (prev - 1 + searchResults.length) % searchResults.length)
-      } else if (e.key === 'Enter' && selectedIndex >= 0) {
-        e.preventDefault()
-        const item = searchResults[selectedIndex]
-        if (item) {
-          close()
-          navigate(`/summary/${item.id}`)
-        }
-      }
-    },
-    [searchResults, selectedIndex, close, navigate]
-  )
 
   const handleSubmit = useCallback(
     async (e?: React.FormEvent) => {
@@ -302,8 +198,7 @@ export function CommandPalette() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="输入命令或搜索关键词..."
+                  placeholder="输入命令，例如：查看 GitHub 摘要、标记第一条为已读..."
                   className="w-full bg-transparent text-x-light-gray placeholder:text-x-gray/50 outline-none text-base font-mono"
                 />
               </form>
@@ -343,8 +238,6 @@ export function CommandPalette() {
                           <Settings className="w-4 h-4" />
                         ) : qa.icon === 'Mail' ? (
                           <Mail className="w-4 h-4" />
-                        ) : qa.icon === 'Sparkles' ? (
-                          <Sparkles className="w-4 h-4" />
                         ) : (
                           <Search className="w-4 h-4" />
                         )}
@@ -361,67 +254,13 @@ export function CommandPalette() {
               </div>
             )}
 
-            {/* 实时搜索结果 */}
+            {/* 提示区：按 Enter 解析 */}
             {input.trim() && !result && !error && !isLoading && !pendingAction && (
-              <div className="border-t border-x-border/40">
-                {searchLoading && (
-                  <div className="px-4 py-6 text-center text-sm text-x-gray font-mono">
-                    <Loader2 className="w-5 h-5 mx-auto mb-2 animate-spin text-x-cyan" />
-                    <p>搜索中...</p>
-                  </div>
-                )}
-                {!searchLoading && searchResults.length === 0 && (
-                  <div className="px-4 py-6 text-center text-sm text-x-gray font-mono">
-                    <p>未找到匹配内容</p>
-                    <p className="text-xs mt-1 opacity-60">按 Enter 调用 AI 解析</p>
-                  </div>
-                )}
-                {!searchLoading && searchResults.length > 0 && (
-                  <div className="max-h-[300px] overflow-y-auto">
-                    <p className="px-4 py-2 text-xs font-mono text-x-gray uppercase tracking-widest sticky top-0 bg-x-black z-10">
-                      搜索结果 ({searchResults.length})
-                    </p>
-                    <div className="space-y-1 px-2 pb-2">
-                      {searchResults.map((item, idx) => (
-                        <button
-                          key={item.id}
-                          onClick={() => {
-                            close()
-                            navigate(`/summary/${item.id}`)
-                          }}
-                          className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors border ${
-                            idx === selectedIndex
-                              ? 'bg-x-dark/80 border-x-cyan/30'
-                              : 'bg-transparent border-transparent hover:bg-x-dark/50 hover:border-x-border/40'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-x-border/40 text-x-gray font-mono uppercase">
-                              {item.platform}
-                            </span>
-                            {item.is_favorited && (
-                              <span className="text-[10px] text-x-blue font-mono">已收藏</span>
-                            )}
-                          </div>
-                          <HighlightText
-                            text={item.title}
-                            query={input.trim()}
-                            className="text-sm text-x-light-gray truncate"
-                          />
-                          <HighlightText
-                            text={item.summary_text.slice(0, 80)}
-                            query={input.trim()}
-                            className="text-xs text-x-gray mt-0.5 truncate"
-                          />
-                        </button>
-                      ))}
-                    </div>
-                    <div className="px-4 py-2 text-[10px] text-x-gray font-mono border-t border-x-border/40 flex items-center justify-between">
-                      <span>↑↓ 选择 · Enter 打开</span>
-                      <span>按 Enter 调用 AI 解析</span>
-                    </div>
-                  </div>
-                )}
+              <div className="px-4 py-4 text-sm text-x-gray font-mono">
+                <div className="flex items-center gap-2">
+                  <Command className="w-4 h-4 text-x-cyan" />
+                  <span>按 Enter 调用 AI 解析并执行</span>
+                </div>
               </div>
             )}
 
@@ -454,28 +293,6 @@ export function CommandPalette() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-x-lime font-mono">执行成功</p>
                     <p className="text-sm text-x-light-gray mt-1 whitespace-pre-wrap font-mono">{result.message}</p>
-                    {/* RAG 问答：展示引用来源 */}
-                    {result.data != null && typeof result.data === 'object' && (result.data as { isRagAnswer?: boolean }).isRagAnswer === true && (
-                      <div className="mt-3 space-y-1">
-                        <p className="text-xs text-x-gray font-mono uppercase tracking-widest">引用来源</p>
-                        {((result.data as { sources?: { summary_id: number; title: string; platform: string; url: string; relevance_score: number }[] }).sources || []).map((src) => (
-                          <button
-                            key={src.summary_id}
-                            onClick={() => {
-                              close()
-                              navigate(`/summary/${src.summary_id}`)
-                            }}
-                            className="w-full text-left px-3 py-2 rounded-lg bg-x-dark/50 hover:bg-x-dark border border-x-border/40 hover:border-x-cyan/20 transition-colors flex items-center gap-2"
-                          >
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-x-border/40 text-x-gray font-mono uppercase">
-                              {src.platform}
-                            </span>
-                            <span className="text-xs text-x-light-gray truncate flex-1">{src.title}</span>
-                            <span className="text-[10px] text-x-gray font-mono"> relevance: {src.relevance_score}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
                     {/* 如果返回的是摘要列表，在面板内直接渲染 */}
                     {Array.isArray(result.data) && result.data.length > 0 && (
                       <div className="mt-3 max-h-[240px] overflow-y-auto space-y-1 pr-1">

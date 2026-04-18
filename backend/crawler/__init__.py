@@ -6,7 +6,6 @@ from crawler.bilibili_crawler import BilibiliCrawler
 from crawler.anthropic_crawler import AnthropicCrawler
 from crawler.builderio_crawler import BuilderioCrawler
 from crawler.hackernews_crawler import HackerNewsCrawler
-from crawler.rss_crawler import RssCrawler
 from summarizer.llm_client import LLMClient
 
 __all__ = [
@@ -18,7 +17,6 @@ __all__ = [
     "AnthropicCrawler",
     "BuilderioCrawler",
     "HackerNewsCrawler",
-    "RssCrawler",
 ]
 
 # 爬虫注册表
@@ -29,7 +27,6 @@ CRAWLERS = {
     "anthropic": AnthropicCrawler,
     "builderio": BuilderioCrawler,
     "hackernews": HackerNewsCrawler,
-    "rss": RssCrawler,
 }
 
 

@@ -13,10 +13,8 @@ export interface Summary {
   author?: string
   content?: string
   is_read: boolean
-  read_progress: number
   is_favorited: boolean
   notes?: string
-  highlight_sentence?: string
   created_at: string
   generated_at?: string
 }
