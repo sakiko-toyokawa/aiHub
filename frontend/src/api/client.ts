@@ -29,9 +29,8 @@ export const summariesApi = {
     return response.data
   },
 
-  markAsRead: async (id: number, progress?: number): Promise<{ status: string; is_read: boolean; read_progress: number }> => {
-    const response = await client.post(`/summaries/${id}/read`, progress !== undefined ? { progress } : undefined)
-    return response.data
+  markAsRead: async (id: number): Promise<void> => {
+    await client.post(`/summaries/${id}/read`)
   },
 
   toggleFavorite: async (id: number): Promise<{ is_favorited: boolean }> => {
@@ -57,14 +56,6 @@ export const summariesApi = {
 
   updateNotes: async (id: number, notes: string): Promise<{ status: string; notes: string }> => {
     const response = await client.post(`/summaries/${id}/notes`, { notes })
-    return response.data
-  },
-
-  getSimilar: async (id: number): Promise<{
-    items: { id: number; title: string; platform: string; summary_text: string; tags: string[]; overlap_tags: string[]; created_at: string; is_read: boolean; is_favorited: boolean }[]
-    total: number
-  }> => {
-    const response = await client.get(`/summaries/${id}/similar`)
     return response.data
   },
 }

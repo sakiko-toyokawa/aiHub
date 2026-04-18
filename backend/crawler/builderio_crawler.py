@@ -91,10 +91,6 @@ class BuilderioCrawler(BaseCrawler):
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # 移除 script/style/noscript 等无意义标签，避免 JSON-LD 和 CSS 混入正文
-        for bad_tag in soup.find_all(["script", "style", "noscript", "nav", "header", "footer"]):
-            bad_tag.decompose()
-
         title = ""
         if soup.title and soup.title.string:
             title = soup.title.string.strip()
@@ -104,9 +100,9 @@ class BuilderioCrawler(BaseCrawler):
                 title = self.clean_html(str(h1))
 
         content = ""
-        selectors = ["main article", "article", "main", "[role='main']"]
+        selectors = ["main", "article"]
         for sel in selectors:
-            tag = soup.select_one(sel)
+            tag = soup.find(sel)
             if tag:
                 content = self.clean_html(str(tag))
                 break

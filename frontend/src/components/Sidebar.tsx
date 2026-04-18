@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { TrendingUp, Github, BookOpen, Video, Twitter, Zap, BookMarked, RefreshCw, Layout, Newspaper, Activity, Cpu, Rss, Globe } from 'lucide-react'
+import { TrendingUp, Github, BookOpen, Video, Twitter, Zap, BookMarked, RefreshCw, Layout, Newspaper, Activity, Cpu } from 'lucide-react'
 import { statsApi, sourcesApi } from '../api/client'
 
 const PLATFORM_ICONS: Record<string, typeof Github> = {
@@ -10,7 +10,6 @@ const PLATFORM_ICONS: Record<string, typeof Github> = {
   anthropic: Zap,
   builderio: Layout,
   hackernews: Newspaper,
-  rss: Rss,
 }
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -21,7 +20,6 @@ const PLATFORM_COLORS: Record<string, string> = {
   anthropic: 'bg-[#d97757]/15 border-[#d97757]/40',
   builderio: 'bg-[#a855f7]/15 border-[#a855f7]/40',
   hackernews: 'bg-[#ff6600]/15 border-[#ff6600]/40',
-  rss: 'bg-[#f26522]/15 border-[#f26522]/40',
 }
 
 const PLATFORM_NAMES: Record<string, string> = {
@@ -32,7 +30,6 @@ const PLATFORM_NAMES: Record<string, string> = {
   anthropic: 'Anthropic',
   builderio: 'Builder.io',
   hackernews: 'Hacker News',
-  rss: 'RSS',
 }
 
 function Sidebar() {
@@ -96,9 +93,9 @@ function Sidebar() {
             </div>
           ) : (
             sources?.map((source) => {
-              const Icon = PLATFORM_ICONS[source.platform] || Globe
-              const color = PLATFORM_COLORS[source.platform] || 'bg-x-border/40 border-x-border/60'
-              const name = PLATFORM_NAMES[source.platform] || source.name || source.platform
+              const Icon = PLATFORM_ICONS[source.platform] || Github
+              const color = PLATFORM_COLORS[source.platform] || 'bg-x-gray border-x-gray'
+              const name = PLATFORM_NAMES[source.platform] || source.platform
               return (
                 <div
                   key={source.id}
@@ -134,8 +131,8 @@ function Sidebar() {
           </div>
           <div className="space-y-3">
             {stats.platforms.map((platform) => {
-              const Icon = PLATFORM_ICONS[platform.platform] || Globe
-              const color = PLATFORM_COLORS[platform.platform] || 'bg-x-border/40 border-x-border/60'
+              const Icon = PLATFORM_ICONS[platform.platform] || Github
+              const color = PLATFORM_COLORS[platform.platform] || 'bg-x-gray'
               const name = PLATFORM_NAMES[platform.platform] || platform.platform
               return (
                 <div

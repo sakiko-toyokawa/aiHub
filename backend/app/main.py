@@ -100,10 +100,9 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created")
 
-        # Migrate: add columns if missing (no Alembic in this project)
+        # Migrate: add content_hash column if missing (no Alembic in this project)
         from sqlalchemy import text
         with engine.connect() as conn:
-            # content_hash
             try:
                 conn.execute(text(
                     "ALTER TABLE raw_contents ADD COLUMN content_hash VARCHAR(32)"
@@ -116,34 +115,6 @@ async def lifespan(app: FastAPI):
                     logger.debug("content_hash column already exists, skip migration")
                 else:
                     logger.warning(f"Migration check for content_hash: {migrate_err}")
-
-            # highlight_sentence
-            try:
-                conn.execute(text(
-                    "ALTER TABLE summaries ADD COLUMN highlight_sentence TEXT"
-                ))
-                conn.commit()
-                logger.info("Migrated: added highlight_sentence column to summaries")
-            except Exception as migrate_err:
-                err_msg = str(migrate_err).lower()
-                if "duplicate column name" in err_msg or "already exists" in err_msg:
-                    logger.debug("highlight_sentence column already exists, skip migration")
-                else:
-                    logger.warning(f"Migration check for highlight_sentence: {migrate_err}")
-
-            # read_progress
-            try:
-                conn.execute(text(
-                    "ALTER TABLE user_reads ADD COLUMN read_progress INTEGER DEFAULT 0"
-                ))
-                conn.commit()
-                logger.info("Migrated: added read_progress column to user_reads")
-            except Exception as migrate_err:
-                err_msg = str(migrate_err).lower()
-                if "duplicate column name" in err_msg or "already exists" in err_msg:
-                    logger.debug("read_progress column already exists, skip migration")
-                else:
-                    logger.warning(f"Migration check for read_progress: {migrate_err}")
 
         # Initialize sample data (if empty)
         import scripts.init_data as init_data

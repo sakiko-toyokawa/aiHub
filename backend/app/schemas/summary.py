@@ -15,9 +15,6 @@ class SummaryBase(BaseModel):
     # AI评分字段
     importance: Optional[int] = None  # 重要性 1-5星
 
-    # AI 标注的最关键一句话
-    highlight_sentence: Optional[str] = None
-
 
 class SummaryCreate(SummaryBase):
     pass

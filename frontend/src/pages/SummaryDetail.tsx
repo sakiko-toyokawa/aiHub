@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Heart, Bookmark, ExternalLink, Share2, Clock, Sparkles, RefreshCw, AlertCircle, Tag, FileText, KeyRound, StickyNote, Lightbulb, Highlighter, BookOpen } from 'lucide-react'
+import { ArrowLeft, Heart, Bookmark, ExternalLink, Share2, Clock, Sparkles, RefreshCw, AlertCircle, Tag, FileText, KeyRound, StickyNote } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { summariesApi } from '../api/client'
@@ -37,27 +37,10 @@ function SummaryDetail() {
   })
 
   const markAsReadMutation = useMutation({
-    mutationFn: (progress?: number) => summariesApi.markAsRead(summaryId, progress),
+    mutationFn: () => summariesApi.markAsRead(summaryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['summary', summaryId] })
     },
-  })
-
-  // Read progress
-  const [readProgress, setReadProgress] = useState(0)
-
-  // Sync read progress from API
-  useEffect(() => {
-    if (summary?.read_progress !== undefined) {
-      setReadProgress(summary.read_progress)
-    }
-  }, [summary?.read_progress])
-
-  // Similar content
-  const { data: similarData } = useQuery({
-    queryKey: ['similar', summaryId],
-    queryFn: () => summariesApi.getSimilar(summaryId),
-    enabled: !isNaN(summaryId),
   })
 
   // Notes state
@@ -97,12 +80,10 @@ function SummaryDetail() {
     }
   }, [])
 
-  // Mark as read when viewing — 用 ref 防止 StrictMode 双重执行和重复调用
-  const hasMarkedRead = useRef(false)
+  // Mark as read when viewing
   useEffect(() => {
-    if (summary && !summary.is_read && !hasMarkedRead.current) {
-      hasMarkedRead.current = true
-      markAsReadMutation.mutate(undefined)
+    if (summary && !summary.is_read) {
+      markAsReadMutation.mutate()
     }
   }, [summary, markAsReadMutation])
 
@@ -196,16 +177,6 @@ function SummaryDetail() {
             <p className="text-lg leading-relaxed mb-4 whitespace-pre-line text-x-light-gray/90">
               {summary.summary_text}
             </p>
-            {summary.highlight_sentence && (
-              <div className="p-3 rounded-lg bg-x-yellow/5 border border-x-yellow/20 mb-4">
-                <div className="flex items-start gap-2">
-                  <Highlighter className="w-4 h-4 text-x-yellow mt-0.5 flex-shrink-0" />
-                  <p className="text-sm text-x-light-gray/90 italic leading-relaxed">
-                    "{summary.highlight_sentence}"
-                  </p>
-                </div>
-              </div>
-            )}
             {summary.tokens_used && (
               <div className="font-mono text-xs text-x-gray">
                 TOKENS_USED: {summary.tokens_used}
@@ -267,34 +238,6 @@ function SummaryDetail() {
           </div>
         )}
 
-        {/* Read Progress */}
-        <div className="cyber-border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-x-cyan" />
-              <h3 className="font-bold font-mono tracking-wide">阅读进度</h3>
-            </div>
-            <span className="text-xs font-mono text-x-cyan">{readProgress}%</span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={readProgress}
-            onChange={(e) => {
-              const val = parseInt(e.target.value)
-              setReadProgress(val)
-              markAsReadMutation.mutate(val)
-            }}
-            className="w-full accent-x-cyan"
-          />
-          <div className="flex justify-between mt-1">
-            <span className="text-[10px] font-mono text-x-gray">0%</span>
-            <span className="text-[10px] font-mono text-x-gray">50%</span>
-            <span className="text-[10px] font-mono text-x-gray">100%</span>
-          </div>
-        </div>
-
         {/* Personal Notes */}
         <div className="cyber-border p-6">
           <div className="flex items-center justify-between mb-4">
@@ -314,49 +257,6 @@ function SummaryDetail() {
             spellCheck={false}
           />
         </div>
-
-        {/* Similar Content */}
-        {similarData && similarData.items.length > 0 && (
-          <div className="cyber-border p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Lightbulb className="w-4 h-4 text-x-yellow" />
-              <h3 className="font-bold font-mono tracking-wide">相关内容</h3>
-              <span className="text-xs text-x-gray font-mono">({similarData.total})</span>
-            </div>
-            <div className="space-y-2">
-              {similarData.items.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => navigate(`/summary/${item.id}`)}
-                  className="w-full text-left px-3 py-3 rounded-lg bg-x-dark/40 hover:bg-x-dark border border-x-border/30 hover:border-x-cyan/20 transition-all group"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-x-border/40 text-x-gray font-mono uppercase">
-                      {item.platform}
-                    </span>
-                    {item.is_read && (
-                      <span className="text-[10px] text-x-lime font-mono">已读</span>
-                    )}
-                    {item.is_favorited && (
-                      <span className="text-[10px] text-x-blue font-mono">已收藏</span>
-                    )}
-                    {item.overlap_tags.length > 0 && (
-                      <span className="text-[10px] text-x-yellow font-mono">
-                        {item.overlap_tags.join(', ')}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-x-light-gray group-hover:text-x-cyan transition-colors truncate">
-                    {item.title}
-                  </p>
-                  <p className="text-xs text-x-gray mt-0.5 truncate">
-                    {item.summary_text}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Actions */}
         <div className="flex items-center justify-between pt-6 border-t border-x-border/40 sticky bottom-0 bg-x-black/95 backdrop-blur-xl py-4">

@@ -32,8 +32,6 @@ export type AgentActionType =
   | 'test_email'
   | 'get_providers'
   | 'get_provider_models'
-  // AI 问答（RAG Lite）
-  | 'ask_ai'
   // 兜底
   | 'unknown'
   | 'navigate'
@@ -57,21 +55,6 @@ export interface QuickAction {
   description?: string
   icon?: string // lucide icon name
   action: AgentAction
-}
-
-/** RAG Lite 引用来源 */
-export interface AskSource {
-  summary_id: number
-  title: string
-  platform: string
-  url: string
-  relevance_score: number
-}
-
-/** RAG Lite 问答响应 */
-export interface AgentAskResponse {
-  answer: string
-  sources: AskSource[]
 }
 
 /** 执行结果的统一封装 */

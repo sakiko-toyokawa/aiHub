@@ -10,7 +10,6 @@ class UserRead(Base):
     id = Column(Integer, primary_key=True, index=True)
     summary_id = Column(Integer, ForeignKey("summaries.id", ondelete="CASCADE"), unique=True)
     is_read = Column(Boolean, default=False)
-    read_progress = Column(Integer, default=0)  # 阅读进度 0-100
     read_at = Column(DateTime(timezone=True))
     is_favorited = Column(Boolean, default=False)
     notes = Column(Text)

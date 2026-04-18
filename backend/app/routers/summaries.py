@@ -112,10 +112,8 @@ async def list_summaries(
                 "platform": raw_content.platform, "title": title,
                 "author": raw_content.author, "url": raw_content.url,
                 "is_read": summary.user_read.is_read if summary.user_read else False,
-                "read_progress": summary.user_read.read_progress if summary.user_read else 0,
                 "is_favorited": summary.user_read.is_favorited if summary.user_read else False,
-                "notes": summary.user_read.notes if summary.user_read else None,
-                "highlight_sentence": summary.highlight_sentence,
+                "notes": summary.user_read.notes if summary.user_read else None
             }
             results.append(result)
         logger.info(f"Returning {len(results)} summaries (total: {total})")
@@ -143,18 +141,15 @@ async def get_summary(summary_id: int, db: Session = Depends(get_db)):
         "generated_at": summary.generated_at, "created_at": summary.created_at,
         "platform": summary.raw_content.platform, "title": title,
         "author": summary.raw_content.author, "url": summary.raw_content.url,
-        "content": clean_html(summary.raw_content.content),
+        "content": summary.raw_content.content,
         "is_read": summary.user_read.is_read if summary.user_read else False,
-        "read_progress": summary.user_read.read_progress if summary.user_read else 0,
         "is_favorited": summary.user_read.is_favorited if summary.user_read else False,
-        "notes": summary.user_read.notes if summary.user_read else None,
-        "highlight_sentence": summary.highlight_sentence,
+        "notes": summary.user_read.notes if summary.user_read else None
     }
 
 
 @router.post("/{summary_id}/read")
-async def mark_as_read(summary_id: int, request: dict = None, db: Session = Depends(get_db)):
-    """标记为已读，可选传入 progress (0-100) 更新阅读进度"""
+async def mark_as_read(summary_id: int, db: Session = Depends(get_db)):
     logger.info(f"[Summaries API] Marking summary as read: id={summary_id}")
     summary = db.query(Summary).filter(Summary.id == summary_id).first()
     if not summary:
@@ -164,29 +159,11 @@ async def mark_as_read(summary_id: int, request: dict = None, db: Session = Depe
     if not user_read:
         user_read = UserRead(summary_id=summary_id)
         db.add(user_read)
-
-    progress = request.get("progress") if request else None
-    now = datetime.now()
-
-    if progress is not None:
-        progress = max(0, min(100, int(progress)))
-        user_read.read_progress = progress
-        if progress >= 100:
-            user_read.is_read = True
-            user_read.read_at = now
-        logger.info(f"[Summaries API] Read progress updated: id={summary_id}, progress={progress}")
-    else:
-        # 幂等：已经是已读则跳过
-        if user_read.is_read:
-            logger.info(f"[Summaries API] Summary already read, skipping: id={summary_id}")
-            return {"status": "success", "already_read": True}
-        user_read.is_read = True
-        user_read.read_progress = 100
-        user_read.read_at = now
-        logger.info(f"[Summaries API] Summary marked as read: id={summary_id}")
-
+    user_read.is_read = True
+    user_read.read_at = datetime.now()
     db.commit()
-    return {"status": "success", "is_read": user_read.is_read, "read_progress": user_read.read_progress}
+    logger.info(f"[Summaries API] Summary marked as read: id={summary_id}")
+    return {"status": "success"}
 
 
 @router.post("/{summary_id}/favorite")
@@ -306,47 +283,3 @@ async def cleanup_summaries(keep_count: int = 5, db: Session = Depends(get_db)):
         "deleted_raw_contents": deleted_raw_count,
         "remaining": remaining_count
     }
-
-
-@router.get("/{summary_id}/similar")
-async def get_similar_summaries(summary_id: int, limit: int = Query(5, ge=1, le=20), db: Session = Depends(get_db)):
-    """获取与指定摘要相似的内容推荐，基于标签重叠度排序"""
-    logger.info(f"[Summaries API] Finding similar summaries for id={summary_id}")
-    target = db.query(Summary).filter(Summary.id == summary_id).first()
-    if not target:
-        logger.warning(f"[Summaries API] Summary not found for similar: id={summary_id}")
-        raise HTTPException(status_code=404, detail="Summary not found")
-
-    target_tags = set(target.tags or [])
-    if not target_tags:
-        logger.info(f"[Summaries API] Target summary has no tags, returning recent items")
-        others = db.query(Summary).filter(Summary.id != summary_id).order_by(desc(Summary.created_at)).limit(limit).all()
-    else:
-        # 获取所有其他摘要，按标签交集数量降序排列
-        others = db.query(Summary).filter(Summary.id != summary_id).all()
-        scored = []
-        for s in others:
-            s_tags = set(s.tags or [])
-            overlap = len(target_tags & s_tags)
-            if overlap > 0 or len(others) <= limit * 2:
-                scored.append((s, overlap))
-        scored.sort(key=lambda x: (-x[1], -x[0].created_at.timestamp() if x[0].created_at else 0))
-        others = [s for s, _ in scored[:limit]]
-
-    results = []
-    for s in others:
-        title = await get_title_with_ai(s.raw_content)
-        overlap_tags = list(set(s.tags or []) & target_tags) if target_tags else []
-        results.append({
-            "id": s.id,
-            "title": title,
-            "platform": s.raw_content.platform,
-            "summary_text": s.summary_text[:200] + "..." if s.summary_text and len(s.summary_text) > 200 else (s.summary_text or ""),
-            "tags": s.tags or [],
-            "overlap_tags": overlap_tags,
-            "created_at": s.created_at,
-            "is_read": s.user_read.is_read if s.user_read else False,
-            "is_favorited": s.user_read.is_favorited if s.user_read else False,
-        })
-    logger.info(f"[Summaries API] Returning {len(results)} similar summaries for id={summary_id}")
-    return {"items": results, "total": len(results)}

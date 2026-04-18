@@ -8,65 +8,47 @@ from app.database import SessionLocal
 from app.models import Source, RawContent, Summary, UserRead
 
 
-# 内置平台配置：不需要凭证的源默认启用，需要凭证的源默认停用（等用户配置）
-BUILTIN_SOURCES = [
-    {"platform": "github", "name": "GitHub Trending", "url_pattern": "https://github.com/trending", "needs_auth": True},
-    {"platform": "zhihu", "name": "知乎 AI 话题", "url_pattern": "https://www.zhihu.com/topic/19550228/hot", "needs_auth": True},
-    {"platform": "bilibili", "name": "B站科技区", "url_pattern": "https://www.bilibili.com/v/tech", "needs_auth": True},
-    {"platform": "anthropic", "name": "Anthropic Blog", "url_pattern": "https://www.anthropic.com/news", "needs_auth": False},
-    {"platform": "builderio", "name": "Builder.io Blog", "url_pattern": "https://www.builder.io/blog", "needs_auth": False},
-    {"platform": "hackernews", "name": "Hacker News", "url_pattern": "https://news.ycombinator.com", "needs_auth": False},
-]
-
-
-def _ensure_builtin_sources(db):
-    """确保所有内置平台在 sources 表中都有记录（get_or_create）"""
-    import os
-
-    def _has_auth(platform: str) -> bool:
-        if platform == "github":
-            return bool(os.getenv("GITHUB_TOKEN"))
-        if platform == "zhihu":
-            return bool(os.getenv("ZHIHU_COOKIE"))
-        if platform == "bilibili":
-            return bool(os.getenv("BILIBILI_SESSDATA"))
-        return True
-
-    created = 0
-    for cfg in BUILTIN_SOURCES:
-        existing = db.query(Source).filter(Source.platform == cfg["platform"]).first()
-        if existing:
-            continue
-        should_active = _has_auth(cfg["platform"]) if cfg["needs_auth"] else True
-        db.add(Source(
-            platform=cfg["platform"],
-            name=cfg["name"],
-            url_pattern=cfg["url_pattern"],
-            is_active=should_active,
-            config={},
-        ))
-        created += 1
-    if created:
-        db.commit()
-        print(f"   + Created {created} builtin sources")
-
-
 def init_sample_data():
     """初始化示例数据"""
     db = SessionLocal()
 
     try:
-        # 1. 始终确保内置源存在（get_or_create，不会重复创建）
-        print("Ensuring builtin sources...")
-        _ensure_builtin_sources(db)
-
-        # 2. 检查是否已有内容数据
+        # 检查是否已有数据
         existing = db.query(RawContent).first()
         if existing:
-            print("Database already has content data, skipping sample content")
+            print("Database already has data, skipping initialization")
             return
 
         print("Initializing sample data...")
+
+        # 1. 创建示例数据源
+        sources = [
+            Source(
+                platform="github",
+                name="GitHub Trending",
+                url_pattern="https://github.com/trending",
+                is_active=True,
+                config={"api_token": ""}
+            ),
+            Source(
+                platform="zhihu",
+                name="知乎 AI 话题",
+                url_pattern="https://www.zhihu.com/topic/19550228/hot",
+                is_active=True,
+                config={}
+            ),
+            Source(
+                platform="bilibili",
+                name="B站科技区",
+                url_pattern="https://www.bilibili.com/v/tech",
+                is_active=True,
+                config={}
+            ),
+        ]
+
+        for source in sources:
+            db.add(source)
+        db.commit()
 
         # 2. 创建示例原始内容
         raw_contents = [
