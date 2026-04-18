@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo:*)",
+      "Bash(git:*)",
+      "Bash(grep -v \"=$\")",
+      "Read(//c/Users/admin/Desktop/ai-knowledge-hub/**)",
+      "Bash(tar cf:*)",
+      "Bash(tar -C /c/Users/admin/Desktop/aiHub -xf -)",
+      "Bash(grep -rE \"\\(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{30,}|z_c0=|SESSDATA|password|smtp_password\\)\" --include=*.py --include=*.ts --include=*.tsx --include=*.js --include=*.json --include=*.md --include=*.txt --include=*.bat --include=*.ps1 .)",
+      "Bash(find . -name .env* -o -name *.pem -o -name *.key -o -name id_rsa)",
+      "Bash(grep -rE \"\\(114514|lpmortvwzvdgfhhg|2o9smYdLcp7Y7wPHhrpZ\\)\" --include=*.py --include=*.ts --include=*.tsx --include=*.js --include=*.json --include=*.md --include=*.txt .)",
+      "Bash(grep -rE \"\\(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{30,}|mzk18890|114514|zhaodan|lpmort\\)\" --include=*.py --include=*.ts --include=*.tsx --include=*.js --include=*.json --include=*.md --include=*.txt .)",
+      "Bash(find . -name .env* -o -name *.env)",
+      "Bash(grep -rE \"\\(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{30,}|z_c0=[^x]|SESSDATA=[^x]|twitter_auth_token=[^x]|twitter_ct0=[^x]\\)\" --include=*.py --include=*.ts --include=*.tsx --include=*.js --include=*.json --include=*.md --include=*.txt --include=*.bat --include=*.ps1 .)"
+    ]
+  }
+}
