@@ -159,14 +159,94 @@ async def run_crawl_job() -> List[Dict[str, Any]]:
     except Exception:
         logger.warning("[CRAWL JOB] content_hash 列不存在，跳过基于内容的增量去重（建议重建数据库）")
 
+    def _save_results(results, crawler, label):
+        nonlocal total_crawled
+        saved_count = 0
+        skipped_count = 0
+        batch_seen: Set[Tuple[str, str]] = set()
+
+        for result in results:
+            key = (result.platform, result.external_id)
+            if key in batch_seen:
+                skipped_count += 1
+                continue
+            batch_seen.add(key)
+
+            try:
+                existing = db.query(RawContent).filter(
+                    RawContent.platform == result.platform,
+                    RawContent.external_id == result.external_id
+                ).first()
+                if existing:
+                    skipped_count += 1
+                    continue
+
+                content_hash = ""
+                if has_content_hash:
+                    content_hash = crawler.compute_hash(
+                        f"{result.title or ''}{result.content or ''}"
+                    )
+                    if content_hash:
+                        hash_existing = db.query(RawContent).filter(
+                            RawContent.content_hash == content_hash
+                        ).first()
+                        if hash_existing:
+                            logger.info(
+                                f"【抓取】{label} 内容哈希重复跳过: "
+                                f"{result.external_id} (与 {hash_existing.platform} 重复)"
+                            )
+                            skipped_count += 1
+                            continue
+
+                raw_content = RawContent(
+                    platform=result.platform,
+                    external_id=result.external_id,
+                    title=result.title,
+                    content=result.content,
+                    author=result.author,
+                    author_url=result.author_url,
+                    url=result.url,
+                    raw_data=result.raw_data,
+                    content_hash=content_hash if has_content_hash else None
+                )
+                db.add(raw_content)
+                db.flush()
+                saved_count += 1
+
+                newly_saved_items.append({
+                    "id": raw_content.id,
+                    "platform": result.platform,
+                    "external_id": result.external_id,
+                    "title": result.title,
+                    "url": result.url,
+                    "author": result.author,
+                })
+
+            except IntegrityError as e:
+                db.rollback()
+                logger.warning(f"【抓取】{label} 数据重复跳过: {result.external_id}")
+                skipped_count += 1
+                continue
+            except Exception as e:
+                logger.error(f"【抓取】保存 {label} 条目失败: {e}")
+                continue
+
+        try:
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            logger.error(f"【抓取】{label} 批量提交失败(存在重复数据): {e}")
+        total_crawled += saved_count
+        logger.info(f"【抓取】{label} 完成: 抓取 {len(results)} 条, 新增 {saved_count} 条, 跳过 {skipped_count} 条")
+
     try:
+        # 1. 硬编码平台抓取
         for platform, config in configs.items():
             try:
                 logger.info(f"【抓取】开始抓取平台: {platform}")
                 crawler = get_crawler(platform, config, llm_client=llm_client)
                 results = await crawler.fetch()
 
-                # 源覆盖保证：若首次抓取为空，尝试扩展抓取
                 if not results:
                     logger.warning(f"【抓取】{platform} 首次抓取未找到内容，触发扩展抓取...")
                     results = await crawler.fetch(expanded=True)
@@ -176,99 +256,90 @@ async def run_crawl_job() -> List[Dict[str, Any]]:
                         logger.warning(f"【抓取】{platform} 扩展抓取后仍无内容，跳过")
                         continue
 
-                # Save to database with deduplication
-                saved_count = 0
-                skipped_count = 0
-                batch_seen: Set[Tuple[str, str]] = set()  # 批次内去重
+                _save_results(results, crawler, platform)
 
-                for result in results:
-                    key = (result.platform, result.external_id)
-
-                    # 1. 批次内去重
-                    if key in batch_seen:
-                        skipped_count += 1
-                        continue
-                    batch_seen.add(key)
-
-                    try:
-                        # 2. 检查数据库是否已存在 (platform, external_id)
-                        existing = db.query(RawContent).filter(
-                            RawContent.platform == result.platform,
-                            RawContent.external_id == result.external_id
-                        ).first()
-                        if existing:
-                            skipped_count += 1
-                            continue
-
-                        # 3. 基于内容哈希的增量去重
-                        content_hash = ""
-                        if has_content_hash:
-                            content_hash = crawler.compute_hash(
-                                f"{result.title or ''}{result.content or ''}"
-                            )
-                            if content_hash:
-                                hash_existing = db.query(RawContent).filter(
-                                    RawContent.content_hash == content_hash
-                                ).first()
-                                if hash_existing:
-                                    logger.info(
-                                        f"【抓取】{platform} 内容哈希重复跳过: "
-                                        f"{result.external_id} (与 {hash_existing.platform} 重复)"
-                                    )
-                                    skipped_count += 1
-                                    continue
-
-                        # 4. 添加到数据库
-                        raw_content = RawContent(
-                            platform=result.platform,
-                            external_id=result.external_id,
-                            title=result.title,
-                            content=result.content,
-                            author=result.author,
-                            author_url=result.author_url,
-                            url=result.url,
-                            raw_data=result.raw_data,
-                            content_hash=content_hash if has_content_hash else None
-                        )
-                        db.add(raw_content)
-                        db.flush()  # 获取 ID
-                        saved_count += 1
-
-                        # 记录新保存的项
-                        newly_saved_items.append({
-                            "id": raw_content.id,
-                            "platform": result.platform,
-                            "external_id": result.external_id,
-                            "title": result.title,
-                            "url": result.url,
-                            "author": result.author,
-                        })
-
-                    except IntegrityError as e:
-                        # 唯一约束冲突，回滚并跳过
-                        db.rollback()
-                        logger.warning(f"【抓取】{platform} 数据重复跳过: {result.external_id}")
-                        skipped_count += 1
-                        continue
-                    except Exception as e:
-                        logger.error(f"【抓取】保存 {platform} 条目失败: {e}")
-                        continue
-
-                try:
-                    db.commit()
-                except IntegrityError as e:
-                    db.rollback()
-                    logger.error(f"【抓取】{platform} 批量提交失败(存在重复数据): {e}")
-                total_crawled += saved_count
-                logger.info(f"【抓取】{platform} 完成: 抓取 {len(results)} 条, 新增 {saved_count} 条, 跳过 {skipped_count} 条")
-
-                # Delay between platforms to avoid rate limiting
                 if platform != list(configs.keys())[-1]:
                     await asyncio.sleep(5)
 
             except Exception as e:
                 logger.exception(f"【抓取】{platform} 抓取失败: {e}")
                 continue
+
+        # 2. RSS 源抓取
+        try:
+            from app.models import Source
+            rss_sources = db.query(Source).filter(
+                Source.platform == 'rss',
+                Source.is_active == True
+            ).all()
+            logger.info(f"【抓取】发现 {len(rss_sources)} 个 RSS 源")
+
+            for rss_source in rss_sources:
+                try:
+                    logger.info(
+                        f"【抓取】RSS 源: {rss_source.name} ({rss_source.url_pattern}), "
+                        f"增量: last_fetched_at={rss_source.last_fetched_at}, last_item_id={rss_source.last_item_id}"
+                    )
+                    crawler = get_crawler('rss', {
+                        'feed_url': rss_source.url_pattern,
+                        'llm_client': llm_client
+                    })
+
+                    # 增量抓取：传入上次抓取状态
+                    incremental_kwargs = {}
+                    if rss_source.last_fetched_at:
+                        incremental_kwargs['last_fetched_at'] = rss_source.last_fetched_at
+                    if rss_source.last_item_id:
+                        incremental_kwargs['last_item_id'] = rss_source.last_item_id
+
+                    results = await crawler.fetch(**incremental_kwargs)
+
+                    # 如果增量抓取无结果，首次抓取时尝试扩展抓取
+                    if not results and rss_source.fetch_count == 0:
+                        logger.warning(f"【抓取】{rss_source.name} 首次抓取未找到内容，触发扩展抓取...")
+                        results = await crawler.fetch(expanded=True)
+                        if results:
+                            logger.info(f"【抓取】{rss_source.name} 扩展抓取成功，获取 {len(results)} 条")
+                        else:
+                            logger.warning(f"【抓取】{rss_source.name} 扩展抓取后仍无内容，跳过")
+
+                    if results:
+                        _save_results(results, crawler, rss_source.name)
+
+                        # 更新增量状态
+                        latest_id = crawler.get_latest_item_id(results)
+                        latest_time = crawler.get_latest_fetched_at(results)
+                        rss_source.last_item_id = latest_id or rss_source.last_item_id
+                        rss_source.last_fetched_at = latest_time or rss_source.last_fetched_at
+                        rss_source.fetch_count = (rss_source.fetch_count or 0) + 1
+                        rss_source.error_count = 0
+                        rss_source.last_error = None
+                        db.commit()
+                        logger.info(
+                            f"【抓取】{rss_source.name} 增量状态已更新: "
+                            f"last_item_id={latest_id}, last_fetched_at={latest_time}"
+                        )
+                    else:
+                        logger.info(f"【抓取】{rss_source.name} 无新内容，跳过")
+
+                    await asyncio.sleep(3)
+
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.exception(f"【抓取】RSS 源 {rss_source.name} 抓取失败: {e}")
+                    # 更新失败计数
+                    rss_source.error_count = (rss_source.error_count or 0) + 1
+                    rss_source.last_error = error_msg[:500]  # 限制长度
+                    # 连续失败 3 次自动禁用
+                    if rss_source.error_count >= 3:
+                        rss_source.is_active = False
+                        logger.warning(
+                            f"【抓取】RSS 源 {rss_source.name} 连续失败 {rss_source.error_count} 次，已自动禁用"
+                        )
+                    db.commit()
+                    continue
+        except Exception as e:
+            logger.warning(f"【抓取】查询 RSS 源失败: {e}")
 
         msg = f"[CRAWL JOB] Crawl job completed. Total added: {total_crawled}"
         console_log(msg)
@@ -361,6 +432,7 @@ async def run_summarize_job():
             'anthropic': 1,
             'builderio': 1,
             'hackernews': 1,
+            'rss': 1,
         }
 
         # 流式获取各平台合格内容
@@ -408,11 +480,35 @@ async def run_summarize_job():
                     ai_model=result.model_used,
                     ai_provider=result.provider,
                     tokens_used=result.tokens_used,
-                    importance=result.importance,  # P0修复: 保存AI评估的重要性
+                    importance=result.importance,
+                    highlight_sentence=result.highlight_sentence,
                 )
                 db.add(summary)
                 db.commit()
                 success_count += 1
+
+                # Update FTS search index
+                try:
+                    from sqlalchemy import text
+                    tags_str = ' '.join(result.tags or [])
+                    db.execute(text("""
+                        INSERT INTO search_index(summary_id, title, content, summary_text, tags)
+                        VALUES(:sid, :title, :content, :summary_text, :tags)
+                    """), {
+                        "sid": summary.id,
+                        "title": raw.title or "",
+                        "content": raw.content or "",
+                        "summary_text": result.summary_text or "",
+                        "tags": tags_str,
+                    })
+                    db.commit()
+                except Exception as fts_err:
+                    logger.warning(f"[FTS] Index insert failed for summary {summary.id}: {fts_err}")
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
+
                 logger.info(f"【总结】已总结: {raw.title[:50]}...")
             except Exception as e:
                 fail_count += 1

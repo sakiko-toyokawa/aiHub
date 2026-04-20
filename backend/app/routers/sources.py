@@ -175,7 +175,7 @@ async def list_sources(
 
 @router.post("/", response_model=SourceSchema)
 async def create_source(source: SourceCreate, db: Session = Depends(get_db)):
-    logger.info(f"[Sources API] Creating source: platform={source.platform}, url={source.url}")
+    logger.info(f"[Sources API] Creating source: platform={source.platform}, url={source.url_pattern}")
     db_source = Source(**source.model_dump())
     db.add(db_source)
     db.commit()

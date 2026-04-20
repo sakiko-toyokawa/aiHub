@@ -26,7 +26,7 @@ if sys.platform == 'win32':
     except locale.Error:
         pass  # 如果设置失败则忽略
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.database import engine, Base
@@ -100,9 +100,10 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created")
 
-        # Migrate: add content_hash column if missing (no Alembic in this project)
+        # Migrate: add columns if missing (no Alembic in this project)
         from sqlalchemy import text
         with engine.connect() as conn:
+            # content_hash
             try:
                 conn.execute(text(
                     "ALTER TABLE raw_contents ADD COLUMN content_hash VARCHAR(32)"
@@ -115,6 +116,107 @@ async def lifespan(app: FastAPI):
                     logger.debug("content_hash column already exists, skip migration")
                 else:
                     logger.warning(f"Migration check for content_hash: {migrate_err}")
+
+            # highlight_sentence
+            try:
+                conn.execute(text(
+                    "ALTER TABLE summaries ADD COLUMN highlight_sentence TEXT"
+                ))
+                conn.commit()
+                logger.info("Migrated: added highlight_sentence column to summaries")
+            except Exception as migrate_err:
+                err_msg = str(migrate_err).lower()
+                if "duplicate column name" in err_msg or "already exists" in err_msg:
+                    logger.debug("highlight_sentence column already exists, skip migration")
+                else:
+                    logger.warning(f"Migration check for highlight_sentence: {migrate_err}")
+
+            # read_progress
+            try:
+                conn.execute(text(
+                    "ALTER TABLE user_reads ADD COLUMN read_progress INTEGER DEFAULT 0"
+                ))
+                conn.commit()
+                logger.info("Migrated: added read_progress column to user_reads")
+            except Exception as migrate_err:
+                err_msg = str(migrate_err).lower()
+                if "duplicate column name" in err_msg or "already exists" in err_msg:
+                    logger.debug("read_progress column already exists, skip migration")
+                else:
+                    logger.warning(f"Migration check for read_progress: {migrate_err}")
+
+            # is_archived
+            try:
+                conn.execute(text(
+                    "ALTER TABLE summaries ADD COLUMN is_archived INTEGER DEFAULT 0"
+                ))
+                conn.commit()
+                logger.info("Migrated: added is_archived column to summaries")
+            except Exception as migrate_err:
+                err_msg = str(migrate_err).lower()
+                if "duplicate column name" in err_msg or "already exists" in err_msg:
+                    logger.debug("is_archived column already exists, skip migration")
+                else:
+                    logger.warning(f"Migration check for is_archived: {migrate_err}")
+
+            # sources incremental fields
+            for col_name, col_def in [
+                ("last_fetched_at", "TIMESTAMP"),
+                ("last_item_id", "VARCHAR(200)"),
+                ("fetch_count", "INTEGER DEFAULT 0"),
+                ("error_count", "INTEGER DEFAULT 0"),
+                ("last_error", "VARCHAR(500)"),
+            ]:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE sources ADD COLUMN {col_name} {col_def}"
+                    ))
+                    conn.commit()
+                    logger.info(f"Migrated: added {col_name} column to sources")
+                except Exception as migrate_err:
+                    err_msg = str(migrate_err).lower()
+                    if "duplicate column name" in err_msg or "already exists" in err_msg:
+                        logger.debug(f"{col_name} column already exists, skip migration")
+                    else:
+                        logger.warning(f"Migration check for {col_name}: {migrate_err}")
+
+        # Create FTS5 search index
+        try:
+            conn.execute(text("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+                    summary_id UNINDEXED,
+                    title,
+                    content,
+                    summary_text,
+                    tags,
+                    tokenize='porter unicode61'
+                )
+            """))
+            conn.commit()
+            logger.info("FTS5 search_index table created")
+        except Exception as e:
+            logger.warning(f"FTS5 table creation check: {e}")
+
+        # Check if search_index needs backfill
+        try:
+            fts_count = conn.execute(text("SELECT COUNT(*) FROM search_index")).scalar()
+            summary_count = conn.execute(text("SELECT COUNT(*) FROM summaries")).scalar()
+            if fts_count == 0 and summary_count and summary_count > 0:
+                logger.info(f"Backfilling FTS index: {summary_count} summaries to index")
+                conn.execute(text("""
+                    INSERT INTO search_index(summary_id, title, content, summary_text, tags)
+                    SELECT s.id,
+                           COALESCE(rc.title, ''),
+                           COALESCE(rc.content, ''),
+                           COALESCE(s.summary_text, ''),
+                           COALESCE((SELECT group_concat(value, ' ') FROM json_each(s.tags)), '')
+                    FROM summaries s
+                    JOIN raw_contents rc ON rc.id = s.raw_content_id
+                """))
+                conn.commit()
+                logger.info("FTS index backfilled")
+        except Exception as e:
+            logger.warning(f"FTS backfill check: {e}")
 
         # Initialize sample data (if empty)
         import scripts.init_data as init_data
@@ -182,11 +284,15 @@ async def log_requests(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
     logger.exception(f"Unhandled exception: {exc}")
-    from fastapi.responses import JSONResponse
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "error": str(exc)}
+        content={"detail": "Internal server error"}
     )
 
 

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import type { AgentAction, AgentExecutionResult } from '../types/agent'
 import { summariesApi, crawlerApi, sourcesApi, statsApi, configApi } from '../api/client'
+import { agentApi } from '../api/agent'
 
 /**
  * useAgentExecutor - Agent Action 执行器
@@ -332,6 +333,20 @@ export function useAgentExecutor() {
             success: true,
             message: `${provider} 的模型列表：\n${lines.join('\n')}`,
             data: models,
+          }
+        }
+
+        // AI 问答（RAG Lite）
+        case 'ask_ai': {
+          const question = String(action.params?.question || '')
+          if (!question) {
+            return { success: false, message: '问题不能为空，请尝试说"什么是 LangChain"或"告诉我关于 RAG 的内容"' }
+          }
+          const response = await agentApi.ask(question)
+          return {
+            success: true,
+            message: response.answer,
+            data: { sources: response.sources, isRagAnswer: true },
           }
         }
 

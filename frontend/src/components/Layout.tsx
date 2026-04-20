@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Home, Bookmark, Settings, Sparkles, Search, Menu, Sun, Moon, Terminal } from 'lucide-react'
+import { Home, Bookmark, Settings, Sparkles, Search, Menu, Sun, Moon, Terminal, Archive } from 'lucide-react'
 import { useState } from 'react'
 import Sidebar from './Sidebar'
 import ParticleNetwork from './ParticleNetwork'
@@ -73,6 +73,16 @@ function Layout() {
             >
               <Bookmark className="w-6 h-6" />
               <span>收藏</span>
+            </NavLink>
+
+            <NavLink
+              to="/archive"
+              className={({ isActive }) =>
+                `nav-item ${isActive ? 'active' : ''}`
+              }
+            >
+              <Archive className="w-6 h-6" />
+              <span>回收站</span>
             </NavLink>
 
             <NavLink
@@ -163,6 +173,10 @@ function Layout() {
               <NavLink to="/favorites" className="nav-item" onClick={() => setIsMobileMenuOpen(false)}>
                 <Bookmark className="w-6 h-6" />
                 <span>收藏</span>
+              </NavLink>
+              <NavLink to="/archive" className="nav-item" onClick={() => setIsMobileMenuOpen(false)}>
+                <Archive className="w-6 h-6" />
+                <span>回收站</span>
               </NavLink>
               <NavLink to="/settings" className="nav-item" onClick={() => setIsMobileMenuOpen(false)}>
                 <Settings className="w-6 h-6" />

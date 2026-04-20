@@ -13,8 +13,11 @@ export interface Summary {
   author?: string
   content?: string
   is_read: boolean
+  read_progress: number
   is_favorited: boolean
   notes?: string
+  highlight_sentence?: string
+  is_archived?: boolean
   created_at: string
   generated_at?: string
 }
@@ -27,6 +30,11 @@ export interface Source {
   is_active: boolean
   config?: Record<string, unknown>
   created_at: string
+  last_fetched_at?: string
+  last_item_id?: string
+  fetch_count?: number
+  error_count?: number
+  last_error?: string
 }
 
 export interface Stats {

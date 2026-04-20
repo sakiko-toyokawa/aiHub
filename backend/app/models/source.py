@@ -14,3 +14,10 @@ class Source(Base):
     config = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # 增量抓取追踪字段
+    last_fetched_at = Column(DateTime(timezone=True), nullable=True)
+    last_item_id = Column(String(200), nullable=True)
+    fetch_count = Column(Integer, default=0)
+    error_count = Column(Integer, default=0)
+    last_error = Column(String(500), nullable=True)

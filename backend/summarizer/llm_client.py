@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import litellm
@@ -12,6 +13,25 @@ litellm.set_verbose = False
 logger = logging.getLogger(__name__)
 
 
+def clean_markdown(text: str) -> str:
+    """移除 markdown 格式标记，保留纯文本内容"""
+    if not text:
+        return text
+    # 粗体 **text** 或 __text__
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    # 斜体 *text* 或 _text_（避免匹配星号列表项）
+    text = re.sub(r'(?<![*_])\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'\1', text)
+    text = re.sub(r'(?<![*_])_(?!_)(.+?)(?<!_)_(?!_)', r'\1', text)
+    # 删除行首 markdown 标题标记
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # 删除 markdown 链接 [text](url) → text
+    text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+    # 删除行内代码 `code`
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    return text
+
+
 @dataclass
 class SummaryResult:
     summary_text: str
@@ -21,6 +41,7 @@ class SummaryResult:
     model_used: str
     provider: str
     tokens_used: int
+    highlight_sentence: Optional[str] = None  # AI 标注的最关键一句话
 
 
 class LLMClient:
@@ -182,9 +203,9 @@ class LLMClient:
         parsed = self._parse_result(result_text)
 
         # 在总结末尾添加原文链接
-        summary = parsed.get('summary', result_text[:500])
+        summary = clean_markdown(parsed.get('summary', result_text[:500]))
         if url and '原文链接' not in summary:
-            summary = f"{summary}\n\n📎 [原文链接]({url})"
+            summary = f"{summary}\n\n📎 原文链接: {url}"
 
         return SummaryResult(
             summary_text=summary,
@@ -193,7 +214,8 @@ class LLMClient:
             importance=parsed.get('importance', 3),
             model_used=self.model,
             provider=self.provider,
-            tokens_used=tokens_used
+            tokens_used=tokens_used,
+            highlight_sentence=parsed.get('highlight_sentence')
         )
 
     def _build_prompt(self, content: str, title: str, url: str = "") -> str:
@@ -215,6 +237,9 @@ class LLMClient:
 - 要点4
 - 要点5
 
+## 最关键的一句话
+（从原文中选出最具代表性、最核心的一句话，直接引用原文，不要改写）
+
 ## 相关技术/工具
 - 技术1
 - 技术2
@@ -230,7 +255,7 @@ tag1, tag2, tag3, tag4, tag5
 """
 
     def _parse_result(self, text: str) -> Dict:
-        result = {'summary': '', 'key_points': [], 'tags': [], 'importance': 3}
+        result = {'summary': '', 'key_points': [], 'tags': [], 'importance': 3, 'highlight_sentence': None}
         lines = text.split('\n')
         current_section = None
         for line in lines:
@@ -241,6 +266,8 @@ tag1, tag2, tag3, tag4, tag5
                 current_section = 'summary'
             elif line.startswith('## 关键要点'):
                 current_section = 'key_points'
+            elif line.startswith('## 最关键的一句话'):
+                current_section = 'highlight'
             elif line.startswith('## 相关技术/工具'):
                 current_section = 'tech'
             elif line.startswith('## 重要性评估'):
@@ -248,13 +275,15 @@ tag1, tag2, tag3, tag4, tag5
             elif line.startswith('## 标签'):
                 current_section = 'tags'
             elif line.startswith('- ') and current_section == 'key_points':
-                result['key_points'].append(line[2:])
+                result['key_points'].append(clean_markdown(line[2:]))
             elif line.startswith('- ') and current_section == 'tech':
                 if 'tech' not in result:
                     result['tech'] = []
-                result['tech'].append(line[2:])
+                result['tech'].append(clean_markdown(line[2:]))
             elif current_section == 'summary' and line and not line.startswith('#'):
-                result['summary'] = line
+                result['summary'] = clean_markdown(line)
+            elif current_section == 'highlight' and line and not line.startswith('#'):
+                result['highlight_sentence'] = clean_markdown(line)
             elif current_section == 'tags' and ',' in line:
                 result['tags'] = [t.strip() for t in line.split(',')]
             elif current_section == 'importance' and '星级:' in line:

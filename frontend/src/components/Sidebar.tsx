@@ -1,44 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { TrendingUp, Github, BookOpen, Video, Twitter, Zap, BookMarked, RefreshCw, Layout, Newspaper, Activity, Cpu } from 'lucide-react'
+import { TrendingUp, BookMarked, RefreshCw, Activity, Cpu, Globe, AlertCircle, Zap, BookOpen } from 'lucide-react'
 import { statsApi, sourcesApi } from '../api/client'
-
-const PLATFORM_ICONS: Record<string, typeof Github> = {
-  github: Github,
-  zhihu: BookOpen,
-  bilibili: Video,
-  twitter: Twitter,
-  anthropic: Zap,
-  builderio: Layout,
-  hackernews: Newspaper,
-}
-
-const PLATFORM_COLORS: Record<string, string> = {
-  github: 'bg-[#24292e] border-[#4a5568]',
-  zhihu: 'bg-[#0084ff]/15 border-[#0084ff]/40',
-  bilibili: 'bg-[#fb7299]/15 border-[#fb7299]/40',
-  twitter: 'bg-[#1da1f2]/15 border-[#1da1f2]/40',
-  anthropic: 'bg-[#d97757]/15 border-[#d97757]/40',
-  builderio: 'bg-[#a855f7]/15 border-[#a855f7]/40',
-  hackernews: 'bg-[#ff6600]/15 border-[#ff6600]/40',
-}
-
-const PLATFORM_NAMES: Record<string, string> = {
-  github: 'GitHub',
-  zhihu: '知乎',
-  bilibili: 'Bilibili',
-  twitter: 'X',
-  anthropic: 'Anthropic',
-  builderio: 'Builder.io',
-  hackernews: 'Hacker News',
-}
+import { PLATFORM_ICONS, PLATFORM_COLORS, PLATFORM_NAMES } from '../constants/platforms'
 
 function Sidebar() {
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['stats'],
     queryFn: statsApi.get,
   })
 
-  const { data: sources, isLoading: sourcesLoading } = useQuery({
+  const { data: sources, isLoading: sourcesLoading, error: sourcesError, refetch: refetchSources } = useQuery({
     queryKey: ['sources'],
     queryFn: sourcesApi.list,
   })
@@ -62,6 +33,17 @@ function Sidebar() {
           {statsLoading ? (
             <div className="flex items-center justify-center py-4">
               <RefreshCw className="w-5 h-5 animate-spin text-x-cyan" />
+            </div>
+          ) : statsError ? (
+            <div className="flex flex-col items-center gap-2 py-4">
+              <AlertCircle className="w-5 h-5 text-x-red" />
+              <span className="font-mono text-xs text-x-red">加载失败</span>
+              <button
+                onClick={() => refetchStats()}
+                className="text-xs text-x-cyan hover:underline font-mono"
+              >
+                重试
+              </button>
             </div>
           ) : (
             statsItems.map((stat) => (
@@ -91,11 +73,22 @@ function Sidebar() {
             <div className="flex items-center justify-center py-4">
               <RefreshCw className="w-5 h-5 animate-spin text-x-cyan" />
             </div>
+          ) : sourcesError ? (
+            <div className="flex flex-col items-center gap-2 py-4">
+              <AlertCircle className="w-5 h-5 text-x-red" />
+              <span className="font-mono text-xs text-x-red">加载失败</span>
+              <button
+                onClick={() => refetchSources()}
+                className="text-xs text-x-cyan hover:underline font-mono"
+              >
+                重试
+              </button>
+            </div>
           ) : (
             sources?.map((source) => {
-              const Icon = PLATFORM_ICONS[source.platform] || Github
-              const color = PLATFORM_COLORS[source.platform] || 'bg-x-gray border-x-gray'
-              const name = PLATFORM_NAMES[source.platform] || source.platform
+              const Icon = PLATFORM_ICONS[source.platform] || Globe
+              const color = PLATFORM_COLORS[source.platform] || 'bg-x-border/40 border-x-border/60'
+              const name = PLATFORM_NAMES[source.platform] || source.name || source.platform
               return (
                 <div
                   key={source.id}
@@ -131,8 +124,8 @@ function Sidebar() {
           </div>
           <div className="space-y-3">
             {stats.platforms.map((platform) => {
-              const Icon = PLATFORM_ICONS[platform.platform] || Github
-              const color = PLATFORM_COLORS[platform.platform] || 'bg-x-gray'
+              const Icon = PLATFORM_ICONS[platform.platform] || Globe
+              const color = PLATFORM_COLORS[platform.platform] || 'bg-x-border/40 border-x-border/60'
               const name = PLATFORM_NAMES[platform.platform] || platform.platform
               return (
                 <div

@@ -16,6 +16,7 @@ export const summariesApi = {
     platform?: string
     is_read?: boolean
     is_favorited?: boolean
+    is_archived?: boolean
     search?: string
     page?: number
     page_size?: number
@@ -29,8 +30,9 @@ export const summariesApi = {
     return response.data
   },
 
-  markAsRead: async (id: number): Promise<void> => {
-    await client.post(`/summaries/${id}/read`)
+  markAsRead: async (id: number, progress?: number): Promise<{ status: string; is_read: boolean; read_progress: number }> => {
+    const response = await client.post(`/summaries/${id}/read`, progress !== undefined ? { progress } : undefined)
+    return response.data
   },
 
   toggleFavorite: async (id: number): Promise<{ is_favorited: boolean }> => {
@@ -56,6 +58,41 @@ export const summariesApi = {
 
   updateNotes: async (id: number, notes: string): Promise<{ status: string; notes: string }> => {
     const response = await client.post(`/summaries/${id}/notes`, { notes })
+    return response.data
+  },
+
+  getSimilar: async (id: number): Promise<{
+    items: { id: number; title: string; platform: string; summary_text: string; tags: string[]; overlap_tags: string[]; created_at: string; is_read: boolean; is_favorited: boolean }[]
+    total: number
+  }> => {
+    const response = await client.get(`/summaries/${id}/similar`)
+    return response.data
+  },
+
+  search: async (q: string, page: number = 1, page_size: number = 20): Promise<{
+    items: Summary[]
+    total: number
+    page: number
+    page_size: number
+  }> => {
+    const response = await client.get('/summaries/search', {
+      params: { q, page, page_size }
+    })
+    return response.data
+  },
+
+  archive: async (id: number): Promise<{ status: string; is_archived: boolean }> => {
+    const response = await client.post(`/summaries/${id}/archive`)
+    return response.data
+  },
+
+  unarchive: async (id: number): Promise<{ status: string; is_archived: boolean }> => {
+    const response = await client.post(`/summaries/${id}/unarchive`)
+    return response.data
+  },
+
+  permanentlyDelete: async (id: number): Promise<{ status: string; message: string }> => {
+    const response = await client.delete(`/summaries/${id}/permanent`)
     return response.data
   },
 }

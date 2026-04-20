@@ -1,11 +1,14 @@
 import json
 import logging
 import re
-from typing import Dict, Any
-from fastapi import APIRouter, HTTPException
+from typing import Dict, Any, List
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.database import get_db
+from app.models import Summary, RawContent
 from summarizer.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -24,6 +27,23 @@ class AgentAction(BaseModel):
 
 class ParseResponse(BaseModel):
     action: AgentAction
+
+
+class AskRequest(BaseModel):
+    question: str
+
+
+class SourceInfo(BaseModel):
+    summary_id: int
+    title: str
+    platform: str
+    url: str
+    relevance_score: int
+
+
+class AskResponse(BaseModel):
+    answer: str
+    sources: List[SourceInfo]
 
 
 # Agent 系统提示词
@@ -73,6 +93,8 @@ AGENT_SYSTEM_PROMPT = """你是一个 AI 命令解析助手。请将用户的自
   params: {}
 - get_provider_models: 查看指定提供商模型
   params: { provider: string }
+- ask_ai: 向 AI 知识库提问
+  params: { question: string }
 - navigate: 页面导航
   params: { path: string }
 - unknown: 无法识别的命令
@@ -105,7 +127,8 @@ AGENT_SYSTEM_PROMPT = """你是一个 AI 命令解析助手。请将用户的自
 17. 如果用户说"查看所有 AI 提供商/模型供应商/有哪些 AI 提供商" → get_providers
 18. 如果用户说"查看 XX 有哪些模型/XX 的模型列表" → get_provider_models，provider 尽量提取用户提到的供应商名称（如 deepseek、openai、claude）
 19. 如果用户说"去XX页/打开XX" → navigate，path 使用前端路由如 "/", "/favorites", "/settings"
-20. 其他无法明确匹配的命令 → unknown，message 中给出建议
+20. 如果用户说"XX是什么/如何XX/为什么XX/告诉我关于XX"等提问句式 → ask_ai，将用户完整问题提取到 question 字段
+21. 其他无法明确匹配的命令 → unknown，message 中给出建议
 """
 
 
@@ -154,3 +177,127 @@ async def parse_command(request: ParseRequest):
     except Exception as e:
         logger.exception(f"Agent parse error: {e}")
         raise HTTPException(status_code=500, detail=f"Agent 解析失败: {str(e)}")
+
+
+def _extract_keywords(text: str) -> List[str]:
+    """从问题中提取关键词（长度>=2的中文/英文/数字词）"""
+    # 中文按字符，英文按单词
+    words = []
+    # 匹配连续的中文字符（每个字符作为一个关键词候选）
+    for char in text:
+        if '\u4e00' <= char <= '\u9fff':
+            words.append(char)
+    # 匹配英文单词和数字
+    for w in re.findall(r'[a-zA-Z0-9]+', text.lower()):
+        if len(w) >= 2:
+            words.append(w)
+    return words
+
+
+def _score_relevance(question: str, summary: Summary) -> int:
+    """基于关键词重叠计算问题与摘要的相关性分数"""
+    keywords = _extract_keywords(question)
+    if not keywords:
+        return 0
+
+    raw = summary.raw_content
+    title = (raw.title or "") if raw else ""
+    content_text = summary.summary_text or ""
+    key_points_text = " ".join(summary.key_points or [])
+    tags_text = " ".join(summary.tags or [])
+    search_text = f"{title} {content_text} {key_points_text} {tags_text}".lower()
+
+    score = 0
+    for kw in keywords:
+        if '\u4e00' <= kw <= '\u9fff':
+            score += search_text.count(kw)
+        else:
+            score += search_text.count(kw)
+    return score
+
+
+RAG_SYSTEM_PROMPT = """你是一个知识库问答助手。请严格基于以下检索到的相关内容回答用户问题。
+
+要求：
+1. 如果检索内容足以回答问题，请给出清晰、简洁的回答，并在关键事实后标注来源编号 [1], [2] 等
+2. 如果检索内容不足以回答问题，请明确说明"根据现有知识库内容，无法完整回答该问题"
+3. 不要编造检索内容中没有的信息
+4. 使用中文回答
+5. 在回答末尾，列出所有引用的来源编号"""
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask_question(request: AskRequest, db: Session = Depends(get_db)):
+    """RAG Lite：基于关键词检索 + LLM 生成回答"""
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="问题不能为空")
+
+    logger.info(f"[RAG] Question: {question}")
+
+    # 1. 查询所有摘要（限制最近 200 条，避免全表扫描过慢）
+    summaries = (
+        db.query(Summary)
+        .join(RawContent)
+        .order_by(Summary.created_at.desc())
+        .limit(200)
+        .all()
+    )
+
+    if not summaries:
+        return AskResponse(
+            answer="知识库暂无内容，请先触发爬虫抓取一些内容后再提问。",
+            sources=[]
+        )
+
+    # 2. 评分并排序
+    scored = [(s, _score_relevance(question, s)) for s in summaries]
+    scored = [(s, score) for s, score in scored if score > 0]
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    # 3. 取 top 5
+    top_summaries = scored[:5]
+    if not top_summaries:
+        return AskResponse(
+            answer="未找到与问题相关的知识库内容，请尝试换个说法或先抓取更多内容。",
+            sources=[]
+        )
+
+    # 4. 构建 context
+    context_lines = []
+    sources = []
+    for idx, (summary, score) in enumerate(top_summaries, 1):
+        raw = summary.raw_content
+        context_lines.append(
+            f"[{idx}] 标题: {raw.title or '无标题'}\n"
+            f"平台: {raw.platform}\n"
+            f"摘要: {summary.summary_text[:300]}...\n"
+            f"标签: {', '.join(summary.tags or [])}"
+        )
+        sources.append(SourceInfo(
+            summary_id=summary.id,
+            title=raw.title or "无标题",
+            platform=raw.platform,
+            url=raw.url or "",
+            relevance_score=score
+        ))
+
+    context = "\n\n".join(context_lines)
+    user_prompt = f"问题：{question}\n\n检索到的相关内容：\n\n{context}\n\n请基于以上内容回答问题。"
+
+    # 5. 调用 LLM
+    try:
+        settings = get_settings()
+        provider, model = settings.get_default_provider_and_model()
+        client = LLMClient(provider=provider, model=model)
+        answer = await client.chat(
+            system_prompt=RAG_SYSTEM_PROMPT,
+            user_message=user_prompt,
+            temperature=0.3,
+            max_tokens=1500,
+        )
+        logger.info(f"[RAG] Answer generated using {provider}, sources={len(sources)}")
+        return AskResponse(answer=answer.strip(), sources=sources)
+    except Exception as e:
+        logger.exception(f"[RAG] LLM call failed: {e}")
+        raise HTTPException(status_code=500, detail=f"AI 回答生成失败: {str(e)}")

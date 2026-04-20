@@ -21,5 +21,11 @@ class Summary(Base):
     # AI评分字段 (数据库已存在)
     importance = Column(Integer, default=3)  # 重要性 1-5星
 
+    # AI 标注的最关键的一句话
+    highlight_sentence = Column(Text)
+
+    # 归档状态
+    is_archived = Column(SAInteger, default=0)  # 0=正常, 1=已归档
+
     raw_content = relationship("RawContent", back_populates="summaries")
     user_read = relationship("UserRead", back_populates="summary", uselist=False)

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Database, Key, Mail, RefreshCw, Shield, ChevronRight, AlertCircle, Check, Loader2, Terminal, HardDrive, Trash2 } from 'lucide-react'
+import { Database, Key, Mail, RefreshCw, Shield, ChevronRight, AlertCircle, Check, Loader2, Terminal, HardDrive, Trash2, Plus, ToggleLeft, ToggleRight } from 'lucide-react'
 import { configApi, sourcesApi, summariesApi } from '../api/client'
 import type { Config, Source, ProviderInfo } from '../types'
 
@@ -20,6 +20,8 @@ function Settings() {
   const [expandedSection, setExpandedSection] = useState<string | null>('ai')
   const [editValues, setEditValues] = useState<Partial<Config>>({})
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [newRssName, setNewRssName] = useState('')
+  const [newRssUrl, setNewRssUrl] = useState('')
 
   // 级联选择状态
   const [selectedProvider, setSelectedProvider] = useState<string>('')
@@ -90,6 +92,56 @@ function Settings() {
       setMessage({ type: 'error', text: error instanceof Error ? error.message : '清理失败' })
     },
   }), [queryClient]))
+
+  const toggleSourceMutation = useMutation({
+    mutationFn: (id: number) => sourcesApi.toggle(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sources'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+    },
+    onError: (error) => {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : '切换失败' })
+    },
+  })
+
+  const deleteSourceMutation = useMutation({
+    mutationFn: (id: number) => sourcesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sources'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+      setMessage({ type: 'success', text: '数据源已删除' })
+      setTimeout(() => setMessage(null), 3000)
+    },
+    onError: (error) => {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : '删除失败' })
+    },
+  })
+
+  const createSourceMutation = useMutation({
+    mutationFn: (data: Partial<Source>) => sourcesApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sources'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+      setNewRssName('')
+      setNewRssUrl('')
+      setMessage({ type: 'success', text: 'RSS 源已添加' })
+      setTimeout(() => setMessage(null), 3000)
+    },
+    onError: (error) => {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : '添加失败' })
+    },
+  })
+
+  const handleAddRss = () => {
+    if (!newRssName.trim() || !newRssUrl.trim()) return
+    createSourceMutation.mutate({
+      platform: 'rss',
+      name: newRssName.trim(),
+      url_pattern: newRssUrl.trim(),
+      is_active: true,
+      config: {},
+    })
+  }
 
   // 获取当前选中提供商的模型列表
   const currentProviderModels = useMemo(() => {
@@ -317,35 +369,80 @@ function Settings() {
           </button>
 
           {expandedSection === 'sources' && sources && (
-            <div className="space-y-2 pl-[52px]"
-
-            >
+            <div className="space-y-2 pl-[52px]">
               {sources.map((source) => (
-                <div key={source.id} className="flex items-center justify-between py-2 border-b border-x-border/20 last:border-0"
-
-                >
-                  <div
-
-                  >
-                    <p className="font-medium font-mono"
-
-                    >{source.name}</p>
-                    <p className="text-sm text-x-gray font-mono"
-
-                    >{source.url_pattern}</p>
+                <div key={source.id} className="flex items-center justify-between py-2 border-b border-x-border/20 last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium font-mono truncate">{source.name}</p>
+                    <p className="text-sm text-x-gray font-mono truncate">{source.url_pattern}</p>
                   </div>
-                  <div className="flex items-center gap-2"
-
-                  >
-                    <span className={`status-dot ${source.is_active ? 'status-active' : 'status-inactive'}`} />
-                    <span className={`font-mono text-xs ${source.is_active ? 'text-x-lime' : 'text-x-gray'}`}
-
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                    <button
+                      onClick={() => toggleSourceMutation.mutate(source.id)}
+                      disabled={toggleSourceMutation.isPending}
+                      className="p-1.5 rounded hover:bg-x-cyan/10 transition-colors"
+                      title={source.is_active ? '暂停' : '启用'}
                     >
+                      {source.is_active ? (
+                        <ToggleRight className="w-5 h-5 text-x-lime" />
+                      ) : (
+                        <ToggleLeft className="w-5 h-5 text-x-gray" />
+                      )}
+                    </button>
+                    {source.platform === 'rss' && (
+                      <button
+                        onClick={() => {
+                          if (confirm(`确定删除 RSS 源 "${source.name}" 吗？`)) {
+                            deleteSourceMutation.mutate(source.id)
+                          }
+                        }}
+                        disabled={deleteSourceMutation.isPending}
+                        className="p-1.5 rounded hover:bg-x-red/10 transition-colors"
+                        title="删除"
+                      >
+                        <Trash2 className="w-4 h-4 text-x-gray hover:text-x-red" />
+                      </button>
+                    )}
+                    <span className={`status-dot ${source.is_active ? 'status-active' : 'status-inactive'}`} />
+                    <span className={`font-mono text-xs ${source.is_active ? 'text-x-lime' : 'text-x-gray'}`}>
                       {source.is_active ? 'ONLINE' : 'OFFLINE'}
                     </span>
                   </div>
                 </div>
               ))}
+
+              {/* Add RSS Source Form */}
+              <div className="pt-4 mt-2 border-t border-x-border/20">
+                <h4 className="font-mono text-sm text-x-gray mb-3">添加 RSS 源</h4>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="名称（如：机器之心）"
+                    value={newRssName}
+                    onChange={(e) => setNewRssName(e.target.value)}
+                    className="w-full x-input font-mono text-sm"
+                  />
+                  <input
+                    type="url"
+                    placeholder="RSS Feed URL"
+                    value={newRssUrl}
+                    onChange={(e) => setNewRssUrl(e.target.value)}
+                    className="w-full x-input font-mono text-sm"
+                  />
+                  <button
+                    onClick={handleAddRss}
+                    disabled={!newRssName.trim() || !newRssUrl.trim() || createSourceMutation.isPending}
+                    className="flex items-center gap-2 x-button-secondary font-mono text-sm py-2 px-4 disabled:opacity-50"
+                  >
+                    {createSourceMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Plus className="w-4 h-4" />
+                    )}
+                    添加 RSS 源
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

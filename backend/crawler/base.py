@@ -142,8 +142,18 @@ class BaseCrawler(ABC):
     def __init__(self, config: Dict[str, Any] = None):
         self.config = config or {}
 
+    # 是否支持增量抓取
+    supports_incremental: bool = False
+
     @abstractmethod
     async def fetch(self, **kwargs) -> List[CrawlResult]:
+        """抓取内容
+
+        Args:
+            **kwargs: 可包含 last_fetched_at (datetime) 和 last_item_id (str) 用于增量抓取
+        Returns:
+            抓取到的内容列表
+        """
         pass
 
     @abstractmethod
@@ -302,6 +312,33 @@ class BaseCrawler(ABC):
     def random_offset(self, min_val: int = 0, max_val: int = 20) -> int:
         """生成随机偏移量，用于分页获取不同位置的内容"""
         return random.randint(min_val, max_val)
+
+    @classmethod
+    def get_latest_item_id(cls, results: List[CrawlResult]) -> Optional[str]:
+        """从抓取结果中提取最新条目的 ID，用于增量追踪
+
+        Args:
+            results: 抓取结果列表（按时间倒序或正序）
+        Returns:
+            最新条目的 external_id，如果没有结果则返回 None
+        """
+        if not results:
+            return None
+        # 默认取第一个结果（假设结果按时间倒序排列）
+        return results[0].external_id
+
+    @classmethod
+    def get_latest_fetched_at(cls, results: List[CrawlResult]) -> Optional[datetime]:
+        """从抓取结果中提取最新条目的抓取时间
+
+        Args:
+            results: 抓取结果列表
+        Returns:
+            最新条目的 fetched_at，如果没有结果则返回 None
+        """
+        if not results:
+            return None
+        return results[0].fetched_at
 
     @staticmethod
     def clean_html(html_content: str) -> str:

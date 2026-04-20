@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import SummaryDetail from './pages/SummaryDetail'
 import Settings from './pages/Settings'
 import Favorites from './pages/Favorites'
+import Archive from './pages/Archive'
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="favorites" element={<Favorites />} />
+        <Route path="archive" element={<Archive />} />
         <Route path="summary/:id" element={<SummaryDetail />} />
         <Route path="settings" element={<Settings />} />
       </Route>
